@@ -1,0 +1,374 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[vietnamese]{babel}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{geometry,graphicx,booktabs,listings,xcolor,float,fancyhdr,hyperref,titlesec,tcolorbox}
+\usepackage{algorithm}\usepackage{algpseudocode}
+\usepackage{multirow,caption,subcaption,enumitem}
+\tcbuselibrary{skins}
+\geometry{left=3cm,right=2cm,top=2.5cm,bottom=2.5cm}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\textit{Báo cáo Project Cuối Kỳ — NLP}}
+\fancyhead[R]{\small\textit{Nhóm: Hiên -- Đình -- Huyên}}
+\fancyfoot[C]{\thepage}\renewcommand{\headrulewidth}{0.4pt}
+\lstset{language=Python,basicstyle=\ttfamily\footnotesize,keywordstyle=\color{blue!80!black}\bfseries,
+  commentstyle=\color{gray}\itshape,stringstyle=\color{teal},numberstyle=\tiny\color{gray},
+  frame=single,rulecolor=\color{gray!40},breaklines=true,numbers=left,xleftmargin=2em,backgroundcolor=\color{gray!5}}
+\titleformat{\section}{\large\bfseries\color{blue!70!black}}{{\thesection.}}{0.5em}{}[\vspace{-4pt}\rule{\linewidth}{0.8pt}]
+\hypersetup{colorlinks=true,linkcolor=blue!60!black,citecolor=green!50!black}
+
+% ===================================================================
+% BẮT ĐẦU TÀI LIỆU
+% ===================================================================
+\begin{document}
+
+% -------------------------------------------------------------------
+% TRANG BÌA
+% -------------------------------------------------------------------
+\begin{titlepage}\thispagestyle{empty}\newgeometry{left=2.8cm,right=2.8cm,top=2cm,bottom=2cm}
+\begin{center}
+{\normalsize\bfseries ĐẠI HỌC QUỐC GIA THÀNH PHỐ HỒ CHÍ MINH}\\[2pt]
+{\large\bfseries TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN}\\[2pt]
+{\normalsize KHOA TOÁN -- TIN HỌC}\vspace{0.6cm}
+{\color{black}\rule{\linewidth}{2.5pt}}\\[1pt]{\color{black}\rule{\linewidth}{0.5pt}}\vspace{0.5cm}
+{\LARGE\bfseries BÁO CÁO PROJECT CUỐI KỲ}\\[8pt]
+{\fontsize{28}{36}\selectfont\bfseries VIETNAMESE GRAPH RAG}\\[6pt]
+{\large\bfseries Hệ thống Hỏi đáp Tiếng Việt}\\[6pt]
+{\large\bfseries dựa trên Đồ thị Tri thức}\\[10pt]
+{\large\itshape Môn học: Xử Lý Ngôn Ngữ Tự Nhiên (NLP)}\vspace{0.3cm}
+{\color{black}\rule{\linewidth}{0.5pt}}\\[1pt]{\color{black}\rule{\linewidth}{2.5pt}}\vspace{1.5cm}
+\renewcommand{\arraystretch}{1.6}
+\begin{tabular}{r@{\hspace{6pt}:\hspace{10pt}}l}
+  {\bfseries Nhóm trưởng}   & Lê Phạm Hồng Hiên -- 22110059 \\[-2pt]
+  {\bfseries Thành viên 1}  & Dương Bùi Phương Đình -- 22110049 \\[-2pt]
+  {\bfseries Thành viên 2}  & Phạm Xuân Huyên -- 22110076 \\[-2pt]
+  {\bfseries Khoa}           & Toán -- Tin học \\[-2pt]
+  {\bfseries Giảng viên}     & (Tên giảng viên) \\[-2pt]
+  {\bfseries Năm học}        & 2025 -- 2026 \\
+\end{tabular}
+\vfill{\small Thành phố Hồ Chí Minh, tháng 5 năm 2026}
+\end{center}\restoregeometry
+\end{titlepage}
+\tableofcontents\newpage
+
+% ===================================================================
+\section{Giới thiệu}
+% ===================================================================
+
+\subsection{Đặt vấn đề}
+
+Trong thời đại bùng nổ thông tin, khả năng \textbf{tìm kiếm và trả lời câu hỏi dựa trên tài liệu} (Question Answering) trở thành nhu cầu thiết yếu. Đặc biệt với \textbf{tiếng Việt}, thách thức lớn nằm ở đặc điểm ngôn ngữ: từ ghép, đa nghĩa, và thiếu công cụ NLP mạnh mẽ so với tiếng Anh.
+
+\textbf{Retrieval-Augmented Generation (RAG)} là kiến trúc kết hợp giữa \textit{truy xuất thông tin} (Information Retrieval) và \textit{sinh văn bản} (Text Generation), cho phép mô hình ngôn ngữ trả lời dựa trên \textbf{nguồn tri thức cụ thể} thay vì chỉ dựa vào kiến thức đã huấn luyện.
+
+\textbf{Graph RAG} mở rộng RAG truyền thống bằng cách bổ sung \textbf{đồ thị tri thức (Knowledge Graph)} --- lưu trữ thực thể và mối quan hệ --- giúp truy xuất chính xác hơn nhờ hiểu \textit{cấu trúc} của thông tin.
+
+\subsection{Mục tiêu dự án}
+
+\begin{enumerate}[leftmargin=2cm]
+  \item Xây dựng hệ thống \textbf{Vietnamese Graph RAG} hoàn chỉnh cho bài toán hỏi đáp tiếng Việt.
+  \item \textbf{So sánh} các phương pháp biểu diễn văn bản: TF-IDF, Word2Vec, GloVe, PhoBERT.
+  \item \textbf{Trích xuất thực thể} (NER) tiếng Việt để xây dựng đồ thị tri thức.
+  \item \textbf{Đánh giá hiệu quả} của Graph RAG so với RAG truyền thống.
+\end{enumerate}
+
+\subsection{Phạm vi}
+
+\begin{itemize}[leftmargin=2cm]
+  \item \textbf{Ngôn ngữ}: Tiếng Việt
+  \item \textbf{Dataset}: UIT-ViQuAD 2.0 (Vietnamese Question Answering) + Wikipedia tiếng Việt
+  \item \textbf{Mô hình}: TF-IDF, Word2Vec, GloVe, PhoBERT, Attention mechanism
+  \item \textbf{LLM}: Gemini API / DeepSeek API (cho phần Generation)
+\end{itemize}
+
+% ===================================================================
+\section{Cơ sở lý thuyết}
+% ===================================================================
+
+\subsection{Tiền xử lý văn bản tiếng Việt}
+
+Tiếng Việt là ngôn ngữ \textbf{đơn lập} (isolating language), trong đó ranh giới từ không được xác định bằng khoảng trắng. Ví dụ: ``học sinh'' là một từ ghép, không phải hai từ riêng biệt.
+
+\textbf{Công cụ sử dụng}: Thư viện \texttt{underthesea} cung cấp chức năng tách từ (word segmentation) cho tiếng Việt:
+
+\begin{lstlisting}[caption={Tách từ tiếng Việt}]
+from underthesea import word_tokenize
+text = "Truong Dai hoc Khoa hoc Tu nhien"
+tokens = word_tokenize(text, format="text")
+# "Truong_Dai_hoc Khoa_hoc Tu_nhien"
+\end{lstlisting}
+
+\subsection{Bag of Words và TF-IDF}
+
+\textbf{TF-IDF} (Term Frequency -- Inverse Document Frequency) đo lường mức độ quan trọng của một từ trong tài liệu so với toàn bộ tập tài liệu:
+\[
+  \text{TF-IDF}(t, d) = \text{TF}(t, d) \times \log\frac{N}{1 + \text{DF}(t)}
+\]
+
+Trong dự án, TF-IDF được sử dụng làm \textbf{baseline} cho việc truy xuất tài liệu.
+
+\subsection{Word Embeddings: Word2Vec và GloVe}
+
+\textbf{Word2Vec} (Mikolov et al., 2013) học biểu diễn từ dựa trên \textit{ngữ cảnh lân cận}:
+\begin{itemize}
+  \item \textbf{Skip-gram}: Dự đoán từ ngữ cảnh từ từ trung tâm
+  \item \textbf{CBOW}: Dự đoán từ trung tâm từ ngữ cảnh
+\end{itemize}
+
+\textbf{GloVe} (Pennington et al., 2014) học embeddings dựa trên \textit{ma trận đồng xuất hiện}, tối ưu hàm mất mát:
+\[
+  J = \sum_{i,j} f(X_{ij}) \left( w_i^T w_j + b_i + b_j - \log X_{ij} \right)^2
+\]
+
+\subsection{Transformer và BERT/PhoBERT}
+
+\textbf{Transformer} (Vaswani et al., 2017) sử dụng cơ chế \textbf{Self-Attention} để xử lý song song toàn bộ chuỗi:
+\[
+  \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right) V
+\]
+
+\textbf{PhoBERT} (Nguyen \& Nguyen, 2020) là mô hình BERT được pre-train trên 20GB dữ liệu tiếng Việt, đạt state-of-the-art trên nhiều tác vụ NLP tiếng Việt.
+
+\subsection{Retrieval-Augmented Generation (RAG)}
+
+RAG kết hợp hai thành phần:
+\begin{enumerate}
+  \item \textbf{Retriever}: Tìm kiếm tài liệu liên quan từ knowledge base
+  \item \textbf{Generator}: Sinh câu trả lời dựa trên tài liệu đã tìm được
+\end{enumerate}
+
+\subsection{Knowledge Graph và Graph RAG}
+
+Knowledge Graph lưu trữ thông tin dưới dạng \textbf{bộ ba} (triple): $(h, r, t)$ --- head entity, relation, tail entity. Graph RAG bổ sung bước \textbf{graph traversal} vào pipeline RAG, cho phép truy xuất thông tin có cấu trúc.
+
+% ===================================================================
+\section{Dataset và Tiền xử lý dữ liệu}
+% ===================================================================
+
+\subsection{Dataset sử dụng}
+
+\begin{table}[H]
+\centering
+\caption{Tổng hợp các dataset sử dụng trong dự án}
+\begin{tabular}{llrl}
+\toprule
+\textbf{Dataset} & \textbf{Tác vụ} & \textbf{Kích thước} & \textbf{Nguồn} \\
+\midrule
+UIT-ViQuAD 2.0 & Question Answering & 35,000+ QA pairs & HuggingFace \\
+PhoNER\_COVID19 & Named Entity Recognition & 10 entity types & HuggingFace \\
+Wikipedia tiếng Việt & Knowledge Base & 1.2M+ articles & HuggingFace \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Cấu trúc UIT-ViQuAD 2.0}
+
+Dataset UIT-ViQuAD 2.0 bao gồm các trường:
+\begin{itemize}
+  \item \texttt{context}: Đoạn văn bản nguồn (từ Wikipedia tiếng Việt)
+  \item \texttt{question}: Câu hỏi
+  \item \texttt{answers}: Câu trả lời (vị trí bắt đầu + text)
+  \item \texttt{is\_impossible}: Đánh dấu câu hỏi không thể trả lời
+\end{itemize}
+
+\begin{lstlisting}[caption={Tải dataset UIT-ViQuAD 2.0}]
+from datasets import load_dataset
+
+dataset = load_dataset("taidng/UIT-ViQuAD2.0")
+print(f"Train: {len(dataset['train'])} samples")
+print(f"Validation: {len(dataset['validation'])} samples")
+\end{lstlisting}
+
+\subsection{Pipeline tiền xử lý}
+
+% TODO: Thêm chi tiết pipeline tiền xử lý
+\begin{enumerate}
+  \item \textbf{Cleaning}: Loại bỏ HTML tags, ký tự đặc biệt, chuẩn hóa Unicode
+  \item \textbf{Word Segmentation}: Tách từ tiếng Việt bằng \texttt{underthesea}
+  \item \textbf{Stopword Removal}: Loại bỏ từ dừng tiếng Việt
+  \item \textbf{Sentence Splitting}: Tách câu cho chunking
+  \item \textbf{Chunking}: Chia tài liệu thành các đoạn 256--512 tokens
+\end{enumerate}
+
+% ===================================================================
+\section{Kiến trúc hệ thống}
+% ===================================================================
+
+\subsection{Tổng quan Pipeline}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/architecture.png}
+  \caption{Kiến trúc tổng quan hệ thống Vietnamese Graph RAG gồm 6 module chính}
+  \label{fig:architecture}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\textwidth]{figures/sequence_diagram.png}
+  \caption{Sequence Diagram: Luồng xử lý khi người dùng đặt câu hỏi}
+  \label{fig:sequence}
+\end{figure}
+
+Hệ thống gồm 6 module chính:
+
+\begin{enumerate}
+  \item \textbf{Module 1 -- Tiền xử lý}: Xử lý văn bản tiếng Việt (tách từ, loại stopwords)
+  \item \textbf{Module 2 -- Embedding}: So sánh TF-IDF, Word2Vec, GloVe, PhoBERT
+  \item \textbf{Module 3 -- NER}: Trích xuất thực thể bằng PhoBERT/underthesea
+  \item \textbf{Module 4 -- Knowledge Graph}: Xây dựng đồ thị tri thức (NetworkX)
+  \item \textbf{Module 5 -- Retrieval}: TF-IDF + Embedding + Graph traversal + Attention re-ranking
+  \item \textbf{Module 6 -- Generation}: Tích hợp LLM API (Gemini/DeepSeek)
+\end{enumerate}
+
+\subsection{Module 2: So sánh Embedding Methods}
+
+Đây là module quan trọng nhất, thể hiện kiến thức NLP cốt lõi. Chúng tôi so sánh 4 phương pháp biểu diễn văn bản:
+
+\begin{table}[H]
+\centering
+\caption{So sánh 4 phương pháp Embedding}
+\begin{tabular}{llll}
+\toprule
+\textbf{Phương pháp} & \textbf{Loại} & \textbf{Đặc điểm} & \textbf{Week} \\
+\midrule
+TF-IDF & Sparse, thống kê & Baseline, không capture ngữ nghĩa & Week 1 \\
+Word2Vec & Dense, predictive & Skip-gram/CBOW, ngữ cảnh cục bộ & Week 2 \\
+GloVe & Dense, count-based & Co-occurrence matrix, ngữ nghĩa toàn cục & Week 3 \\
+PhoBERT & Dense, contextual & Transformer, tiếng Việt, SOTA & Week 5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/embedding_comparison.png}
+  \caption{So sánh hiệu quả Retrieval giữa 4 phương pháp Embedding (minh họa)}
+  \label{fig:embedding_comparison}
+\end{figure}
+
+% TODO: Cập nhật số liệu thực tế sau khi chạy thí nghiệm
+
+\subsection{Module 3: Named Entity Recognition}
+
+% TODO: Thêm kết quả NER
+
+\subsection{Module 4: Knowledge Graph}
+
+% TODO: Thêm visualization đồ thị tri thức
+
+\subsection{Module 5: Retrieval với Attention Re-ranking}
+
+% TODO: Thêm mô tả attention-based re-ranking
+
+% ===================================================================
+\section{Thực nghiệm}
+% ===================================================================
+
+\subsection{Môi trường thực nghiệm}
+
+\begin{table}[H]
+\centering
+\caption{Cấu hình môi trường thực nghiệm}
+\begin{tabular}{ll}
+\toprule
+\textbf{Thành phần} & \textbf{Chi tiết} \\
+\midrule
+Platform & Google Colab (T4 GPU) \\
+Python & 3.10+ \\
+PyTorch & 2.x \\
+Transformers & 5.x \\
+Các thư viện khác & underthesea, gensim, networkx, faiss-cpu \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Thí nghiệm 1: So sánh Embedding Methods}
+
+% TODO: Thêm bảng kết quả Precision@K, Recall@K, MRR
+
+\subsection{Thí nghiệm 2: Đánh giá NER}
+
+% TODO: Thêm bảng kết quả F1-score NER
+
+\subsection{Thí nghiệm 3: So sánh Retrieval Strategies}
+
+% TODO: So sánh TF-IDF vs Embedding vs Graph RAG
+
+\subsection{Thí nghiệm 4: End-to-End Evaluation}
+
+% TODO: Đánh giá toàn pipeline
+
+% ===================================================================
+\section{Kết quả và Thảo luận}
+% ===================================================================
+
+% TODO: Thêm phân tích kết quả
+
+% ===================================================================
+\section{Phân công công việc}
+% ===================================================================
+
+\begin{table}[H]
+\centering
+\caption{Phân công công việc nhóm}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{p{4cm}p{4.5cm}p{4.5cm}}
+\toprule
+\textbf{Lê Phạm Hồng Hiên} \newline 22110059 \newline \textit{} 
+& \textbf{Dương Bùi Phương Đình} \newline 22110049
+& \textbf{Phạm Xuân Huyên} \newline 22110076 \\
+\midrule
+Kiến trúc tổng thể & Tiền xử lý dữ liệu & Embedding \& Retrieval \\
+Module 5: Attention Re-ranking & Module 1: Preprocessing & Module 2: So sánh Embedding \\
+Module 6: RAG Pipeline & Module 3: NER Extraction & Module 4: Knowledge Graph \\
+Tích hợp \& Testing & Dataset preparation & Evaluation \& Metrics \\
+Báo cáo \& Trình bày & Báo cáo (phần Data, NER) & Báo cáo (phần Embedding, KG) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ===================================================================
+\section{Kết luận}
+% ===================================================================
+
+% TODO: Viết kết luận
+
+\subsection{Tóm tắt kết quả}
+
+\subsection{Hạn chế}
+
+\subsection{Hướng phát triển}
+
+% ===================================================================
+% TÀI LIỆU THAM KHẢO
+% ===================================================================
+\begin{thebibliography}{99}
+
+\bibitem{vaswani2017}
+Vaswani, A., et al. (2017). ``Attention Is All You Need.'' \textit{NeurIPS 2017}.
+
+\bibitem{devlin2019}
+Devlin, J., et al. (2019). ``BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.'' \textit{NAACL 2019}.
+
+\bibitem{phobert2020}
+Nguyen, D.Q. \& Nguyen, A.T. (2020). ``PhoBERT: Pre-trained language models for Vietnamese.'' \textit{Findings of EMNLP 2020}.
+
+\bibitem{viquad2020}
+Nguyen, K., et al. (2020). ``A Vietnamese Dataset for Evaluating Machine Reading Comprehension.'' \textit{COLING 2020}.
+
+\bibitem{mikolov2013}
+Mikolov, T., et al. (2013). ``Efficient Estimation of Word Representations in Vector Space.'' \textit{ICLR 2013}.
+
+\bibitem{pennington2014}
+Pennington, J., Socher, R., \& Manning, C. (2014). ``GloVe: Global Vectors for Word Representation.'' \textit{EMNLP 2014}.
+
+\bibitem{lewis2020}
+Lewis, P., et al. (2020). ``Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks.'' \textit{NeurIPS 2020}.
+
+\bibitem{graphrag2024}
+Microsoft Research. (2024). ``From Local to Global: A Graph RAG Approach to Query-Focused Summarization.''
+
+\end{thebibliography}
+
+\end{document}

@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual Environment
+venv/
+.env/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Models (too large for git)
+models/*.bin
+models/*.pt
+models/*.pth
+models/*.safetensors
+models/*.onnx
+
+# Data (large files)
+data/raw/*.csv
+data/raw/*.json
+data/raw/*.parquet
+data/processed/*.pkl
+data/processed/*.npy
+
+# LaTeX build artifacts
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.fls
+report/*.fdb_latexmk
+report/*.synctex.gz
+report/*.bbl
+report/*.blg
+
+# Results (regenerable)
+# results/figures/*.png
+
+# Secrets
+.env
+*.key
