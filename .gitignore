@@ -55,6 +55,11 @@ report/*.blg
 # Results (regenerable)
 # results/figures/*.png
 
+# LLMOps runtime artifacts (regenerable / large)
+artifacts/
+logs/
+src/*.egg-info/
+
 # Secrets
 .env
 *.key

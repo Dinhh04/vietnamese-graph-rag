@@ -645,6 +645,403 @@ with open('results_part2.json', 'w', encoding='utf-8') as f:
 print('Saved results_part2.json')'''),
 ]
 
+# ============================================================================
+# PART 2 — phiên bản A+B+UI (UIT-ViSFD + Shopee + Gradio). Ghi đè định nghĩa trên.
+# ============================================================================
+p2 = [
+md(r'''# 🛒 Vietnamese Graph RAG — Part 2  (UIT-ViSFD + Shopee)
+## Knowledge Graph · Attention Re-ranking · Graph RAG (OpenAI) · Web UI (Gradio)
+
+> ⚙️ Bật **Internet** + **GPU**. Secret `OPENAI_API_KEY` (Add-ons → Secrets).
+>
+> Gộp **2 nguồn e-commerce**: UIT-ViSFD (smartphone, có nhãn aspect) + **Shopee** (đa sản phẩm: shop / product / rating).
+> Cuối notebook có **giao diện web (Gradio)** tạo link demo công khai.'''),
+
+md(r'''## 0. Cài đặt'''),
+code(r'''!pip install -q underthesea gensim networkx openai gradio
+!pip install -q transformers'''),
+
+code(LOADER_BLOCK + r'''
+import matplotlib.pyplot as plt
+import networkx as nx
+from collections import Counter
+from underthesea import word_tokenize
+warnings.filterwarnings('ignore')
+np.random.seed(42)
+print('Libraries loaded!')'''),
+
+md(r'''## 1. Load 2 nguồn dữ liệu + helpers'''),
+code(PARSE_BLOCK + r'''
+train_df = load_split('Train.csv')
+train_df['parsed_labels'] = train_df['label'].apply(parse_label)
+train_df['aspects'] = train_df['parsed_labels'].apply(lambda x: [a for a, s in x])
+print('UIT-ViSFD:', len(train_df), 'reviews')
+
+def seg(text): return word_tokenize(str(text)[:256], format='text')
+
+def load_shopee():
+    name = 'shopee_reviews_full.csv'
+    p = _find_csv(name)
+    if p is None:
+        p = DATA_DIR + '/' + name
+        try:
+            urllib.request.urlretrieve('https://raw.githubusercontent.com/nhtlongcs/shopee-reviews-sentiment-analysis/master/data/automated/v3.csv', p)
+        except Exception as e:
+            print('Shopee download failed:', e); return pd.DataFrame()
+    df = pd.read_csv(p, sep='\t')
+    return df.dropna(subset=['comment'])
+
+shopee_df = load_shopee()
+print('Shopee:', len(shopee_df), '| products:', shopee_df['product_name'].nunique(),
+      '| shops:', shopee_df['shop_name'].nunique())'''),
+
+code(KW_BLOCK + r'''
+train_df['brand'] = train_df['comment'].apply(detect_brand)
+print('Brand dist:', dict(Counter(train_df['brand']).most_common()))'''),
+
+md(r'''## 2. Knowledge Graph hợp nhất
+
+- **UIT-ViSFD**: `brand → aspect → aspect#sentiment` (nhãn vàng)
+- **Shopee**: `shop → product → aspect` (mentions); node `product` mang thuộc tính rating trung bình'''),
+code(r'''G = nx.DiGraph()
+SENT_COLOR = {'Positive':'lightgreen','Negative':'lightcoral','Neutral':'khaki'}
+for a in ASPECTS: G.add_node(a, type='aspect', color='lightblue')
+
+# --- UIT-ViSFD: brand -> aspect -> sentiment (gold) ---
+for _, row in train_df.iterrows():
+    brand = row['brand']
+    if brand != 'Unknown' and not G.has_node(brand): G.add_node(brand, type='brand', color='gold')
+    for asp, sent in row['parsed_labels']:
+        if asp not in ASPECTS: continue
+        sn = f'{asp}#{sent}'
+        if not G.has_node(sn): G.add_node(sn, type='sentiment', sentiment=sent, color=SENT_COLOR.get(sent, 'lightgray'))
+        if G.has_edge(asp, sn): G[asp][sn]['weight'] += 1
+        else: G.add_edge(asp, sn, relation='has_sentiment', weight=1)
+        if brand != 'Unknown':
+            if G.has_edge(brand, asp): G[brand][asp]['weight'] += 1
+            else: G.add_edge(brand, asp, relation='reviewed_on', weight=1)
+
+# --- Shopee: shop -> product -> aspect (mentions) ---
+def rating_sent(r):
+    try: r = float(r)
+    except Exception: return 'Neutral'
+    return 'Positive' if r >= 4 else ('Neutral' if r == 3 else 'Negative')
+
+prod_stats = {}
+for _, r in shopee_df.iterrows():
+    shop = str(r['shop_name'])[:40]; prod = str(r['product_name'])[:50]; com = str(r['comment'])
+    if not G.has_node(shop): G.add_node(shop, type='shop', color='violet')
+    if not G.has_node(prod): G.add_node(prod, type='product', color='wheat')
+    if G.has_edge(shop, prod): G[shop][prod]['weight'] += 1
+    else: G.add_edge(shop, prod, relation='sells', weight=1)
+    for asp in aspects_from_text(com):
+        if G.has_edge(prod, asp): G[prod][asp]['weight'] += 1
+        else: G.add_edge(prod, asp, relation='mentions', weight=1)
+    prod_stats.setdefault(prod, []).append(r['rating_star'])
+
+for prod, rs in prod_stats.items():
+    vals = [float(x) for x in rs if str(x).strip() not in ('', 'nan')]
+    G.nodes[prod]['avg_rating'] = float(np.mean(vals)) if vals else 0.0
+    G.nodes[prod]['n_reviews'] = len(rs)
+
+print(f'KG: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges')
+print('Node types:', dict(Counter(nx.get_node_attributes(G, 'type').values())))
+assert any(str(n).startswith('SER&ACC') for n in G.nodes), "thieu SER&ACC trong KG!"
+'''),
+
+code(r'''fig, ax = plt.subplots(figsize=(16, 12))
+pos = nx.spring_layout(G, k=2.2, seed=42)
+colors = [G.nodes[n].get('color', 'white') for n in G.nodes()]
+sizes  = [250 + G.degree(n) * 35 for n in G.nodes()]
+nx.draw_networkx_nodes(G, pos, node_color=colors, node_size=sizes, alpha=0.85, ax=ax)
+nx.draw_networkx_edges(G, pos, alpha=0.25, edge_color='gray', arrows=True, arrowsize=10, ax=ax)
+big = {n: n for n in G.nodes() if G.degree(n) >= 4}
+nx.draw_networkx_labels(G, pos, labels=big, font_size=8, ax=ax)
+ax.set_title('Knowledge Graph hop nhat: UIT-ViSFD (brand/aspect) + Shopee (shop/product)'); ax.axis('off')
+plt.tight_layout(); plt.savefig('fig_knowledge_graph.png', dpi=150, bbox_inches='tight'); plt.show()'''),
+
+code(r'''def graph_query(aspect):
+    out = {}
+    if aspect in G:
+        for nb in G.successors(aspect):
+            d = G.nodes[nb]
+            if d.get('type') == 'sentiment':
+                out[nb] = {'sentiment': d['sentiment'], 'count': G[aspect][nb]['weight']}
+    return out
+
+PRODUCT_NODES = [n for n, d in G.nodes(data=True) if d.get('type') == 'product']
+def product_context(question):
+    ql = str(question).lower(); hits = []
+    for prod in PRODUCT_NODES:
+        toks = [t for t in re.findall(r'\w+', prod.lower()) if len(t) > 3]
+        if any(t in ql for t in toks):
+            d = G.nodes[prod]; hits.append((prod, d.get('avg_rating', 0.0), d.get('n_reviews', 0)))
+    return hits[:3]
+
+for a in ['CAMERA', 'SER&ACC']:
+    print(a, '->', {k: v['count'] for k, v in graph_query(a).items()})'''),
+
+md(r'''## 3. PhoBERT + corpus hợp nhất (UIT-ViSFD + Shopee)'''),
+code(r'''import torch
+from transformers import AutoModel, AutoTokenizer
+from tqdm.auto import tqdm
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+tk = AutoTokenizer.from_pretrained('vinai/phobert-base-v2')
+ph = AutoModel.from_pretrained('vinai/phobert-base-v2').to(device).eval()
+
+records = []
+mv = train_df['comment'].astype(str).str.len() > 5
+for _, r in train_df[mv].iterrows():
+    records.append({'raw': str(r['comment'])[:256], 'source': 'UIT-ViSFD', 'gold': set(r['aspects']),
+                    'product': None, 'shop': None, 'rating': None})
+for _, r in shopee_df.iterrows():
+    c = str(r['comment'])
+    if len(c) <= 5: continue
+    records.append({'raw': c[:256], 'source': 'Shopee', 'gold': set(),
+                    'product': str(r['product_name'])[:50], 'shop': str(r['shop_name'])[:40], 'rating': r['rating_star']})
+
+corpus_raw     = [seg(x['raw']) for x in tqdm(records, desc='seg')]
+corpus_aspects = [x['gold'] for x in records]
+corpus_meta    = records
+nv = sum(1 for x in records if x['source'] == 'UIT-ViSFD'); ns = len(records) - nv
+print(f'Corpus hop nhat: {len(records)} (UIT-ViSFD {nv} + Shopee {ns})')
+
+@torch.no_grad()
+def encode_mean(texts, bs=32):
+    out = []
+    for i in range(0, len(texts), bs):
+        enc = tk(texts[i:i+bs], padding=True, truncation=True, max_length=128, return_tensors='pt').to(device)
+        h = ph(**enc).last_hidden_state; m = enc['attention_mask'].unsqueeze(-1)
+        out.append(((h * m).sum(1) / m.sum(1)).cpu())
+    return torch.cat(out)
+
+print('Encoding corpus (mean-pool)...')
+doc_vecs = encode_mean(corpus_raw)
+doc_vecs_n = torch.nn.functional.normalize(doc_vecs, dim=1)
+print('doc_vecs:', tuple(doc_vecs.shape))
+
+@torch.no_grad()
+def encode_tokens(text):
+    enc = tk([text], padding=True, truncation=True, max_length=64, return_tensors='pt').to(device)
+    h = ph(**enc).last_hidden_state[0]; m = enc['attention_mask'][0].bool()
+    return torch.nn.functional.normalize(h[m], dim=1).cpu()'''),
+
+md(r'''## 4. Attention Re-ranking (late-interaction MaxSim)'''),
+code(r'''def maxsim(q_tok, d_tok):
+    sim = q_tok @ d_tok.T
+    return sim.max(dim=1).values.sum().item() / q_tok.shape[0]
+
+def _nz(x):
+    rng = x.max() - x.min()
+    return (x - x.min()) / rng if rng > 1e-9 else x * 0.0
+
+def hybrid_retrieve(query, top_k=5, n_cand=50, w_bi=0.4, w_attn=0.4, w_graph=0.2):
+    qv = torch.nn.functional.normalize(encode_mean([seg(query)]), dim=1)
+    bi = (doc_vecs_n @ qv.T).squeeze(1).numpy()
+    cand = bi.argsort()[::-1][:n_cand]
+    q_tok = encode_tokens(seg(query))
+    attn = np.array([maxsim(q_tok, encode_tokens(corpus_raw[i])) for i in cand])
+    q_asp = aspect_from_query(query)
+    graph = np.array([1.0 if (q_asp and q_asp in aspects_from_text(corpus_raw[i])) else 0.0 for i in cand])
+    combined = w_bi * _nz(bi[cand]) + w_attn * _nz(attn) + w_graph * graph
+    order = combined.argsort()[::-1][:top_k]
+    res = []
+    for o in order:
+        i = int(cand[o]); m = corpus_meta[i]
+        res.append({'idx': i, 'text': corpus_raw[i], 'source': m['source'], 'product': m['product'],
+                    'shop': m['shop'], 'rating': m['rating'], 'aspects': list(corpus_aspects[i]),
+                    'score': float(combined[o])})
+    return res
+
+print('-- Demo cau hoi thoi trang (Shopee) --')
+for r in hybrid_retrieve('áo hoodie chất vải có đẹp không', top_k=3):
+    print(f"[{r['source']}|{r['score']:.3f}] {r['text'][:80]}")
+print('-- Demo cau hoi smartphone (UIT-ViSFD) --')
+for r in hybrid_retrieve('camera chụp đêm có tốt không', top_k=3):
+    print(f"[{r['source']}|{r['score']:.3f}] {r['text'][:80]}")'''),
+
+md(r'''## 5. Graph RAG — sinh câu trả lời bằng OpenAI'''),
+code(r'''from openai import OpenAI
+OPENAI_KEY = None
+try:
+    from kaggle_secrets import UserSecretsClient
+    OPENAI_KEY = UserSecretsClient().get_secret('OPENAI_API_KEY')
+except Exception:
+    OPENAI_KEY = os.environ.get('OPENAI_API_KEY')
+
+client = None
+LLM_MODEL = 'gpt-4o-mini'   # doi sang 'gpt-4o' / 'gpt-4.1-mini' / 'gpt-3.5-turbo' tuy key
+if OPENAI_KEY:
+    try:
+        client = OpenAI(api_key=OPENAI_KEY)
+        _ = client.chat.completions.create(model=LLM_MODEL,
+                messages=[{'role': 'user', 'content': 'ping'}], max_tokens=5)
+        print('LLM ready:', LLM_MODEL)
+        try:
+            gpts = sorted(m.id for m in client.models.list().data if 'gpt' in m.id)
+            print('Model GPT kha dung:', gpts[:15])
+        except Exception:
+            pass
+    except Exception as e:
+        print('OpenAI loi:', str(e)[:100]); client = None
+if client is None:
+    print('⚠️ Chua co OPENAI_API_KEY hop le -> bo qua Generation, van chay Retrieval + Graph.')'''),
+
+code(r'''def graph_rag_answer(question, top_k=5):
+    retrieved = hybrid_retrieve(question, top_k=top_k)
+    asp = aspect_from_query(question); gctx = ''
+    if asp:
+        sd = graph_query(asp); tot = sum(v['count'] for v in sd.values())
+        for n, inf in sorted(sd.items(), key=lambda x: -x[1]['count']):
+            pct = 100 * inf['count'] / tot if tot else 0
+            gctx += f"- {asp}/{inf['sentiment']}: {inf['count']} review ({pct:.0f}%)\n"
+    for prod, avg, ncnt in product_context(question):
+        gctx += f"- San pham '{prod}': {avg:.1f} sao ({ncnt} review)\n"
+    ctx = '\n'.join(f"[{r['source']}] {r['text'][:150]}" for r in retrieved)
+    prompt = f"""Ban la tro ly tu van mua sam online. CHI dua tren du lieu duoi day, tra loi ngan gon bang tieng Viet.
+
+=== DANH GIA NGUOI DUNG ===
+{ctx}
+
+=== THONG KE TU KNOWLEDGE GRAPH ===
+{gctx or 'Khong co thong ke cho khia canh nay.'}
+
+=== CAU HOI ===
+{question}
+
+Tra loi:"""
+    ans = '(LLM chua cau hinh — xem cac review truy xuat o duoi)'
+    if client is not None:
+        try:
+            resp = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[{'role': 'system', 'content': 'Ban la tro ly tu van mua sam online, tra loi bang tieng Viet.'},
+                          {'role': 'user', 'content': prompt}],
+                temperature=0.3, max_tokens=400)
+            ans = resp.choices[0].message.content
+        except Exception as e:
+            ans = f'(Loi LLM: {e})'
+    return {'question': question, 'answer': ans, 'graph_context': gctx, 'retrieved': retrieved}
+
+for q in ['Camera chụp đêm có tốt không?', 'Áo hoodie chất vải thế nào?', 'Shop giao hàng có nhanh không?']:
+    r = graph_rag_answer(q)
+    print('=' * 70); print('Q:', q); print('A:', r['answer'][:400])
+    if r['graph_context']: print('Graph:', r['graph_context'].replace(chr(10), ' | '))'''),
+
+md(r'''## 6. Đánh giá ablation (không rò rỉ metric)
+
+Relevance chấm bằng **nhãn vàng UIT-ViSFD**; graph boost dùng aspect **quan sát trong nội dung** → độc lập.
+(Tài liệu Shopee không có nhãn aspect nên không tính là relevant — đánh giá vẫn nhất quán giữa các cấu hình.)'''),
+code(r'''def retrieve_components(query, n_cand=50):
+    qv = torch.nn.functional.normalize(encode_mean([seg(query)]), dim=1)
+    bi = (doc_vecs_n @ qv.T).squeeze(1).numpy()
+    cand = bi.argsort()[::-1][:n_cand]
+    q_tok = encode_tokens(seg(query))
+    attn = np.array([maxsim(q_tok, encode_tokens(corpus_raw[i])) for i in cand])
+    q_asp = aspect_from_query(query)
+    graph = np.array([1.0 if (q_asp and q_asp in aspects_from_text(corpus_raw[i])) else 0.0 for i in cand])
+    return cand, bi[cand], attn, graph
+
+CONFIGS = {
+    'Bi-encoder (PhoBERT)': (1.0, 0.0, 0.0),
+    '+ Attention rerank':   (0.5, 0.5, 0.0),
+    '+ Graph (Graph RAG)':  (0.4, 0.4, 0.2),
+}
+EVAL = [('camera chụp ảnh đẹp không','CAMERA'), ('pin trâu dùng lâu không','BATTERY'),
+        ('màn hình hiển thị sắc nét','SCREEN'), ('máy chạy mượt hiệu năng','PERFORMANCE'),
+        ('giá hợp lý hay đắt','PRICE'), ('thiết kế đẹp cầm thoải mái','DESIGN'),
+        ('loa âm thanh tính năng','FEATURES'), ('nhân viên tư vấn bảo hành dịch vụ','SER&ACC')]
+
+def p_at_k(order, asp, k): return sum(1 for i in order[:k] if asp in corpus_aspects[i]) / k
+def mrr(order, asp):
+    for r, i in enumerate(order, 1):
+        if asp in corpus_aspects[i]: return 1.0 / r
+    return 0.0
+
+cache = {q: retrieve_components(q) for q, _ in EVAL}
+rows = []
+for name, (wb, wa, wg) in CONFIGS.items():
+    p5 = p10 = mr = 0.0
+    for q, asp in EVAL:
+        cand, bi, attn, graph = cache[q]
+        comb = wb * _nz(bi) + wa * _nz(attn) + wg * graph
+        order = cand[comb.argsort()[::-1]]
+        p5 += p_at_k(order, asp, 5); p10 += p_at_k(order, asp, 10); mr += mrr(order, asp)
+    n = len(EVAL); rows.append({'Config': name, 'P@5': p5/n, 'P@10': p10/n, 'MRR': mr/n})
+eval_df = pd.DataFrame(rows).set_index('Config').round(4)
+print(eval_df)'''),
+
+code(r'''ax = eval_df.plot(kind='bar', figsize=(10, 5))
+ax.set_title('Ablation: Attention va Graph (ground-truth = nhan vang UIT-ViSFD)')
+ax.set_ylabel('Score'); plt.xticks(rotation=10, ha='right'); plt.tight_layout()
+plt.savefig('fig_rag_vs_graphrag.png', dpi=150, bbox_inches='tight'); plt.show()
+
+with open('results_part2.json', 'w', encoding='utf-8') as f:
+    json.dump({'kg_nodes': G.number_of_nodes(), 'kg_edges': G.number_of_edges(),
+               'corpus_visfd': nv, 'corpus_shopee': ns,
+               'ablation': eval_df.reset_index().to_dict(orient='records')}, f, ensure_ascii=False, indent=2)
+print('Saved results_part2.json')'''),
+
+md(r'''## 7. 📦 Export artifacts cho repo LLMOps (`src/vngraphrag`)
+
+Tính embeddings + KG **trên GPU Kaggle**, xuất đúng định dạng `DocumentIndex` của repo.
+Tải folder `artifacts/` về → bỏ vào repo → `make api` **nạp lại index + KG, không encode lại** ~10.9k review
+(serve chỉ cần PhoBERT để mã hoá *câu hỏi*, chạy CPU vẫn ổn).'''),
+code(r'''import hashlib, pickle
+os.makedirs('artifacts', exist_ok=True)
+MODEL = 'vinai/phobert-base-v2'
+
+# 1) doc vectors (đã normalize -> cosine = dot product), khớp src/index.py
+np.save('artifacts/doc_vectors.npy', doc_vecs_n.numpy().astype('float32'))
+
+# 2) records (metadata) căn chỉnh từng dòng với vectors
+recs = []
+for m in corpus_meta:
+    rt = m['rating']
+    rating = None if (rt is None or str(rt).strip() in ('', 'nan')) else float(rt)
+    recs.append({'raw': m['raw'], 'source': m['source'], 'gold': sorted(m['gold']),
+                 'product': m['product'], 'shop': m['shop'], 'rating': rating})
+with open('artifacts/records.json', 'w', encoding='utf-8') as f:
+    json.dump(recs, f, ensure_ascii=False)
+
+# 3) manifest (version = hash(model|n_records)) — TRÙNG công thức _version() trong src/index.py
+ver = hashlib.sha256(f'{MODEL}|{len(recs)}'.encode()).hexdigest()[:12]
+with open('artifacts/manifest.json', 'w', encoding='utf-8') as f:
+    json.dump({'model': MODEL, 'n_records': len(recs), 'version': ver}, f, ensure_ascii=False, indent=2)
+
+# 4) Knowledge Graph
+with open('artifacts/kg.pkl', 'wb') as f:
+    pickle.dump(G, f)
+
+print('Exported ->', os.listdir('artifacts'))
+print('Tai folder artifacts/ ve repo. Sau do: make api (nap lai index+KG, KHONG encode lai corpus).')'''),
+
+md(r'''## 8. 🎛️ Giao diện Web (Gradio)
+
+Chạy cell dưới → Gradio in ra **link public** (dạng `https://xxxxx.gradio.live`) sống ~72h để demo trực tiếp.'''),
+code(r'''import gradio as gr
+
+def ui_fn(question):
+    r = graph_rag_answer(question, top_k=5)
+    refs = []
+    for d in r['retrieved']:
+        extra = f" · {d['product']} ({d['rating']}★)" if d['product'] else ''
+        refs.append(f"[{d['source']}{extra}] {d['text'][:140]}")
+    return r['answer'], (r['graph_context'] or '(khong co thong ke)'), '\n\n'.join(refs)
+
+app = gr.Interface(
+    fn=ui_fn,
+    inputs=gr.Textbox(label='Câu hỏi của bạn', value='Camera chụp đêm có tốt không?'),
+    outputs=[gr.Textbox(label='💬 Trả lời (LLM)'),
+             gr.Textbox(label='🕸️ Knowledge Graph context'),
+             gr.Textbox(label='📄 Review trích dẫn')],
+    title='Vietnamese Graph RAG — E-commerce QA',
+    description='UIT-ViSFD (smartphone) + Shopee (đa sản phẩm). Hỏi về sản phẩm → truy xuất review + KG → trả lời.',
+    examples=[['Pin dùng được bao lâu?'], ['Áo hoodie chất vải thế nào?'],
+              ['Shop giao hàng có nhanh không?'], ['Máy nào giá rẻ mà camera tốt?']])
+app.launch(share=True)'''),
+]
+
 os.makedirs('notebooks', exist_ok=True)
 with open('notebooks/kaggle_part1_embedding_ner.ipynb', 'w', encoding='utf-8') as f:
     json.dump(nb(p1), f, ensure_ascii=False, indent=1)

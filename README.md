@@ -26,7 +26,10 @@ Xây dựng hệ thống **Graph RAG** (Retrieval-Augmented Generation) cho doma
 | Dataset | Kích thước | Nội dung | Nguồn |
 |---|---|---|---|
 | **UIT-ViSFD** | 11,122 comments (train 7,786) | Review smartphone, **10 aspects** (gồm SER&ACC), 3 sentiments | Shopee |
+| **Shopee reviews** | 3,154 reviews · 26 sản phẩm · 24 shop | Đa sản phẩm (thời trang…), có `comment / product_name / shop_name / rating_star` | [nhtlongcs](https://github.com/nhtlongcs/shopee-reviews-sentiment-analysis) |
 | **PhoNER_COVID19** | — | NER tiếng Việt (domain COVID — tải về tham khảo, **không dùng** để gán nhãn sản phẩm) | HuggingFace |
+
+> Part 2 **gộp 2 nguồn** thành corpus ~10,900 review: UIT-ViSFD (có nhãn aspect) + Shopee (shop/product/rating cho Knowledge Graph). Cuối Part 2 có **giao diện web Gradio** (`app.launch(share=True)` → link `*.gradio.live` để demo trực tiếp).
 
 > Ghi chú: 10 aspect = `SCREEN, CAMERA, BATTERY, PERFORMANCE, STORAGE, DESIGN, PRICE, GENERAL, FEATURES, SER&ACC`.
 > NER thương hiệu/cửa hàng dùng `underthesea` (NER tổng quát PER/LOC/ORG) + gazetteer thương hiệu.
@@ -34,19 +37,79 @@ Xây dựng hệ thống **Graph RAG** (Retrieval-Augmented Generation) cho doma
 ## 🏗️ Cấu trúc dự án (thực tế)
 ```
 vietnamese-graph-rag/
-├── README.md
-├── requirements.txt
-├── build_notebooks.py                       # sinh lại 2 notebook bên dưới
-├── download_data.py
-├── notebooks/
-│   ├── kaggle_part1_embedding_ner.ipynb     # Data · Preprocess · NER · So sánh Embedding
-│   └── kaggle_part2_graph_rag.ipynb         # Knowledge Graph · Attention rerank · Graph RAG
-├── data/
-│   └── raw/                                  # UIT-ViSFD (Train/Dev/Test.csv), PhoNER, stopwords
+├── README.md  ·  config.yaml  ·  pyproject.toml  ·  Dockerfile  ·  Makefile  ·  .env.example
+├── notebooks/                                 # bản demo Kaggle (khám phá nhanh)
+│   ├── kaggle_part1_embedding_ner.ipynb
+│   └── kaggle_part2_graph_rag.ipynb
+├── src/vngraphrag/                            # 🟢 package LLMOps (production-lite)
+│   ├── config.py            # ⚙️ infra: config YAML + env (secret qua env)
+│   ├── observability.py     # ⚙️ infra: log latency/token/cost + feedback → JSONL
+│   ├── core/                # 📚 dữ liệu + biểu diễn
+│   │   ├── data.py          #    load UIT-ViSFD + Shopee, parse nhãn, keyword/gazetteer
+│   │   ├── embeddings.py    #    PhoBERT encoder (mean-pool + token-level) + maxsim
+│   │   ├── index.py         #    DocumentIndex: vector + meta, lưu/nạp CÓ VERSION
+│   │   └── kg.py            #    Knowledge Graph (build/save/load, query, product_context)
+│   ├── rag/                 # 🔗 suy luận
+│   │   ├── retrieval.py     #    HybridRetriever (bi-encoder → MaxSim → graph boost)
+│   │   ├── generate.py      #    OpenAI client + prompt grounding
+│   │   └── pipeline.py      #    GraphRAGPipeline: orchestrate + observability
+│   └── cli/                 # ⌨️ entrypoints
+│       ├── build_index.py   #    build & persist index + KG
+│       ├── evaluate.py      #    P@k/MRR ablation + REGRESSION GATE cho CI
+│       └── import_artifacts.py  # xác nhận artifacts xuất từ notebook
+├── app/
+│   ├── api.py           # FastAPI: /health /query /feedback
+│   └── ui.py            # Gradio UI (in-process hoặc gọi API) + nút 👍/👎
+├── tests/test_core.py   # unit test no-GPU (chạy trong CI)
+├── .github/workflows/ci.yml   # lint + test; eval-gate chạy thủ công
+├── data/raw/            # UIT-ViSFD + shopee_reviews_full.csv
+├── artifacts/           # (sinh ra) index + KG + metrics.json — gitignored
+├── logs/                # (sinh ra) queries.jsonl + feedback.jsonl — gitignored
 └── report/
-    ├── NLP_Final_Report.tex
-    └── figures/
 ```
+
+## 🔧 Pipeline LLMOps (production-lite)
+
+> 📐 Kiến trúc chi tiết (sơ đồ module + data-flow + data contracts + design decisions): xem [ARCHITECTURE.md](ARCHITECTURE.md).
+
+```
+            build_index (CLI)                  serve
+data/raw ───────────────────► artifacts/ ──► GraphRAGPipeline ──► FastAPI /query ──► Gradio UI
+  UIT-ViSFD + Shopee          (index+KG       retrieve → graph        │  observability      │ 👍/👎
+                               versioned)     → OpenAI generate       └─ logs/queries.jsonl ─┘ feedback.jsonl
+                                                     ▲
+                              evaluate (CLI) ── P@k/MRR + regression gate (CI)
+```
+
+| Thành phần LLMOps | Hiện thực |
+|---|---|
+| Config + secret tách env | `config.py` + `.env` (key chỉ qua `OPENAI_API_KEY`) |
+| Artifact versioning | `index.py` manifest (hash model + #records) → tự rebuild khi lệch |
+| Serving API | `app/api.py` (FastAPI) |
+| UI + feedback loop | `app/ui.py` (Gradio, 👍/👎 → `logs/feedback.jsonl`) |
+| Observability | mỗi query log latency + token + **cost USD** vào `logs/queries.jsonl` |
+| Eval + regression gate | `evaluate.py` → `metrics.json`, exit≠0 nếu MRR < `eval_min_mrr` |
+| Đóng gói + CI | `Dockerfile` + `.github/workflows/ci.yml` |
+
+### Chạy local (không phải Kaggle)
+```bash
+pip install -e ".[dev]"          # cài package
+make check                        # 👀 1 lệnh kiểm soát: syntax mọi .py + JSON notebook + inventory
+export OPENAI_API_KEY=sk-...      # (Windows PowerShell: $env:OPENAI_API_KEY="sk-...")
+
+# Đường A — tính tại chỗ (cần GPU cho nhanh):
+make index                        # encode ~10.9k review → artifacts/ (lần sau nạp lại, không tính lại)
+# Đường B — tái dùng kết quả notebook Kaggle:
+#   chạy notebook Part 2 §7 → tải artifacts/ về repo →
+make import                       # xác nhận artifacts/ hợp lệ (khỏi encode lại)
+
+make eval                         # P@k/MRR + regression gate → artifacts/metrics.json
+make api                          # FastAPI http://localhost:8000  (POST /query)
+make ui                           # Gradio UI (link demo)
+make test                         # unit test no-GPU
+docker build -t vngraphrag .      # đóng gói serving
+```
+**Kiểm soát code:** `make check` in ra toàn bộ file + số dòng + vai trò và báo lỗi syntax — chạy bất cứ lúc nào để khỏi phải tự dò file.
 
 ## 🚀 Chạy trên Kaggle
 1. Tạo Kaggle Notebook mới, upload `notebooks/kaggle_part1_embedding_ner.ipynb`.

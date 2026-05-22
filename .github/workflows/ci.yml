@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # Cài deps nhẹ đủ để chạy unit test lõi (không kéo torch/transformers trong CI)
+      - name: Install light deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas pyyaml pytest ruff
+          pip install -e . --no-deps
+
+      - name: Lint
+        run: ruff check src app tests
+
+      - name: Unit tests (no-GPU core)
+        run: pytest -q tests/test_core.py
+
+  # Eval gate chạy thủ công / nightly vì cần model + artifacts (GPU)
+  eval-gate:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install -e .
+      - run: python -m vngraphrag.build_index
+      - run: python -m vngraphrag.evaluate   # exit !=0 nếu MRR tụt dưới ngưỡng

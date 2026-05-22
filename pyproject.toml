@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vngraphrag"
+version = "0.1.0"
+description = "Vietnamese Graph RAG for E-commerce (production-lite LLMOps)"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "pyyaml>=6.0",
+    "networkx>=3.2",
+    "scikit-learn>=1.4",
+    "underthesea>=6.8",
+    "torch>=2.0",
+    "transformers>=4.40",
+    "openai>=1.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2.0",
+    "gradio>=4.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[project.scripts]
+vngr-build-index = "vngraphrag.cli.build_index:main"
+vngr-eval = "vngraphrag.cli.evaluate:main"
+vngr-import-artifacts = "vngraphrag.cli.import_artifacts:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "app", "tests", "scripts"]
+
+[tool.ruff.lint]
+# E/W pycodestyle · F pyflakes · I isort · UP pyupgrade · B bugbear · SIM simplify
+select = ["E", "W", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # độ dài dòng do formatter lo
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

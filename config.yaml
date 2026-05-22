@@ -1,0 +1,22 @@
+# Vietnamese Graph RAG — cấu hình pipeline (KHÔNG để secret ở đây; OPENAI_API_KEY đọc từ env)
+data_dir: data/raw
+artifacts_dir: artifacts
+logs_dir: logs
+
+embedding_model: vinai/phobert-base-v2
+max_seq_len: 128
+
+retrieval:
+  n_candidates: 50
+  top_k: 5
+  w_bi: 0.4
+  w_attn: 0.4
+  w_graph: 0.2
+
+llm:
+  model: gpt-4o-mini
+  temperature: 0.3
+  max_tokens: 400
+
+# CI regression gate: build fails nếu MRR tốt nhất tụt dưới ngưỡng này
+eval_min_mrr: 0.30

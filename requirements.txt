@@ -21,3 +21,6 @@ tqdm>=4.66.0
 
 # LLM API (Generation) — cần OPENAI_API_KEY
 openai>=1.0.0
+
+# Web UI demo
+gradio>=4.0.0
