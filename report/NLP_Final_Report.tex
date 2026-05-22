@@ -77,9 +77,9 @@ Thương mại điện tử (TMĐT) tại Việt Nam đang phát triển bùng n
 
 \begin{itemize}[leftmargin=2cm]
   \item \textbf{Domain}: Thương mại điện tử --- Đánh giá smartphone tiếng Việt
-  \item \textbf{Dataset}: UIT-ViSFD (11,122 reviews smartphone) + ViCloABSA (7,000 reviews thời trang)
-  \item \textbf{Mô hình}: TF-IDF, Word2Vec, GloVe, PhoBERT, Attention mechanism
-  \item \textbf{LLM}: Gemini API / DeepSeek API (cho phần Generation)
+  \item \textbf{Dataset}: UIT-ViSFD (11,122 reviews; tập train 7,786 dùng cho thực nghiệm)
+  \item \textbf{Mô hình}: TF-IDF, Word2Vec, GloVe-SVD, PhoBERT, Attention (late-interaction)
+  \item \textbf{LLM}: OpenAI API (gpt-4o-mini) cho phần Generation
 \end{itemize}
 
 % ===================================================================
@@ -164,10 +164,11 @@ Graph RAG bổ sung bước \textbf{graph traversal} vào pipeline RAG, cho phé
 \textbf{Dataset} & \textbf{Tác vụ} & \textbf{Kích thước} & \textbf{Nguồn} \\
 \midrule
 UIT-ViSFD & Aspect-Based Sentiment & 11,122 comments & Shopee \\
-ViCloABSA & Aspect-Based Sentiment & 7,000 comments & Shopee + Lazada \\
-PhoNER\_COVID19 & Named Entity Recognition & 10 entity types & HuggingFace \\
+PhoNER\_COVID19 & NER (tham khảo) & domain COVID & HuggingFace \\
 \bottomrule
 \end{tabular}
+\\[4pt]
+{\small\textit{Ghi chú: PhoNER\_COVID19 thuộc domain COVID nên không phù hợp gán nhãn thực thể sản phẩm; chỉ tải về tham khảo. Việc trích xuất thương hiệu dùng NER tổng quát (\texttt{underthesea}) kết hợp gazetteer.}}
 \end{table}
 
 \subsection{Dataset chính: UIT-ViSFD}
@@ -196,19 +197,17 @@ print(f"Aspects: {df['aspect'].unique()}")
 print(f"Sentiments: {df['polarity'].value_counts()}")
 \end{lstlisting}
 
-\subsection{Dataset bổ sung: ViCloABSA}
+\subsection{Phân tích nhãn aspect}
 
-\textbf{ViCloABSA} chứa 7,000 đánh giá quần áo từ Shopee và Lazada với 5 aspect (Chất liệu, Giá, Thiết kế, Giao hàng, Dịch vụ), giúp mở rộng knowledge base sang domain thời trang.
+Nhãn của UIT-ViSFD có dạng chuỗi \texttt{\{ASPECT\#Sentiment\}} ngăn cách bởi dấu \texttt{;}. Một điểm cần lưu ý: aspect \textbf{SER\&ACC} chứa ký tự \texttt{\&}, nên biểu thức chính quy ngây thơ \texttt{\textbackslash\{(\textbackslash w+)\#(\textbackslash w+)\textbackslash\}} sẽ \textbf{bỏ sót} aspect này (1.995 lần trong tập train --- aspect phổ biến thứ 7). Chúng tôi sửa thành \texttt{\textbackslash\{([\textbackslash w\&]+)\#(\textbackslash w+)\textbackslash\}} để giữ đủ 10 aspect.
 
 \subsection{Pipeline tiền xử lý}
 
-% TODO: Thêm chi tiết pipeline tiền xử lý
 \begin{enumerate}
-  \item \textbf{Cleaning}: Loại bỏ HTML tags, ký tự đặc biệt, chuẩn hóa Unicode
-  \item \textbf{Word Segmentation}: Tách từ tiếng Việt bằng \texttt{underthesea}
-  \item \textbf{Stopword Removal}: Loại bỏ từ dừng tiếng Việt
-  \item \textbf{Sentence Splitting}: Tách câu cho chunking
-  \item \textbf{Chunking}: Chia tài liệu thành các đoạn 256--512 tokens
+  \item \textbf{Cleaning}: lowercase, loại URL, ký tự đặc biệt, chữ số, chuẩn hóa khoảng trắng.
+  \item \textbf{Word Segmentation}: tách từ tiếng Việt bằng \texttt{underthesea}.
+  \item \textbf{Stopword Removal}: loại từ dừng (cho TF-IDF/Word2Vec/GloVe).
+  \item \textbf{Lưu ý nhất quán}: PhoBERT dùng văn bản \textbf{đã tách từ nhưng giữ dấu/số} (không loại stopword), đúng với pipeline khuyến nghị của PhoBERT; các phương pháp đếm dùng bản đã làm sạch.
 \end{enumerate}
 
 % ===================================================================
@@ -239,7 +238,7 @@ Hệ thống gồm 6 module chính:
   \item \textbf{Module 3 -- NER}: Trích xuất thực thể bằng PhoBERT/underthesea
   \item \textbf{Module 4 -- Knowledge Graph}: Xây dựng đồ thị tri thức (NetworkX)
   \item \textbf{Module 5 -- Retrieval}: TF-IDF + Embedding + Graph traversal + Attention re-ranking
-  \item \textbf{Module 6 -- Generation}: Tích hợp LLM API (Gemini/DeepSeek)
+  \item \textbf{Module 6 -- Generation}: Tích hợp LLM API (OpenAI)
 \end{enumerate}
 
 \subsection{Module 2: So sánh Embedding Methods}
@@ -264,23 +263,34 @@ PhoBERT & Dense, contextual & Transformer, tiếng Việt, SOTA & Week 5 \\
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/embedding_comparison.png}
-  \caption{So sánh hiệu quả Retrieval giữa 4 phương pháp Embedding (minh họa)}
+  \caption{So sánh hiệu quả Retrieval giữa 4 phương pháp Embedding (Precision@k \& MRR)}
   \label{fig:embedding_comparison}
 \end{figure}
 
-% TODO: Cập nhật số liệu thực tế sau khi chạy thí nghiệm
+\textbf{Lưu ý về độ đo}: không dùng ``trung bình cosine similarity'' để so sánh, vì độ lớn cosine \textbf{không so sánh được} giữa các không gian embedding khác nhau (TF-IDF thưa cho giá trị thấp hơn PhoBERT dày). Thay vào đó dùng \textbf{Precision@k} và \textbf{MRR} với ground-truth là nhãn aspect (xem Mục~\ref{sec:exp1}).
+
+\textbf{Lưu ý về ``GloVe''}: do hạn chế tài nguyên, chúng tôi dùng \textbf{xấp xỉ kiểu GloVe} --- SVD trên ma trận đồng xuất hiện ở mức tài liệu (gần với LSA), không phải GloVe cửa sổ ngữ cảnh gốc.
 
 \subsection{Module 3: Named Entity Recognition}
 
-% TODO: Thêm kết quả NER
+NER tổng quát của \texttt{underthesea} (nhãn PER/LOC/ORG) bắt tốt các thực thể \textbf{thương hiệu} và \textbf{cửa hàng} (vd. \textit{Apple}, \textit{Thế Giới Di Động}). Thực thể đặc thù e-commerce (dòng máy) không nằm trong tập nhãn tổng quát nên được bổ sung bằng \textbf{gazetteer thương hiệu}. Các thực thể thương hiệu này được đưa vào Knowledge Graph làm node \texttt{brand}. (PhoNER\_COVID19 không dùng vì khác domain.)
 
 \subsection{Module 4: Knowledge Graph}
 
-% TODO: Thêm visualization đồ thị tri thức
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/knowledge_graph.png}{%
+    \includegraphics[width=0.9\textwidth]{figures/knowledge_graph.png}}{%
+    \fbox{\parbox{0.8\textwidth}{\centering\textit{Copy \texttt{fig\_knowledge\_graph.png} từ output notebook Part 2 vào \texttt{report/figures/knowledge\_graph.png}}}}}
+  \caption{Knowledge Graph: \texttt{brand} $\to$ \texttt{aspect} $\to$ \texttt{aspect\#sentiment}, trọng số cạnh = số review.}
+  \label{fig:kg}
+\end{figure}
+
+Đồ thị có hướng (NetworkX) gồm 3 loại node: \texttt{brand}, \texttt{aspect} (10 aspect gồm SER\&ACC) và \texttt{aspect\#sentiment}. Cạnh \texttt{brand}$\to$\texttt{aspect} và \texttt{aspect}$\to$\texttt{sentiment} mang trọng số là số review, cho phép truy vấn phân bố cảm xúc theo từng khía cạnh.
 
 \subsection{Module 5: Retrieval với Attention Re-ranking}
 
-% TODO: Thêm mô tả attention-based re-ranking
+Pipeline truy xuất 2 tầng: (1) \textbf{bi-encoder} PhoBERT (mean-pooling) tính cosine để lấy Top-50 candidate; (2) \textbf{tái xếp hạng late-interaction (MaxSim, kiểu ColBERT)} --- với mỗi token của truy vấn, lấy cosine lớn nhất so với các token của tài liệu rồi tính trung bình. Đây là cơ chế \textbf{attention} (tích vô hướng có chuẩn hoá giữa token query và token doc), \textbf{không tham số ngẫu nhiên và không cần huấn luyện}. Điểm cuối kết hợp: bi-encoder, MaxSim, và một \textbf{graph boost} dựa trên aspect quan sát được trong nội dung review.
 
 % ===================================================================
 \section{Thực nghiệm}
@@ -305,26 +315,60 @@ Các thư viện khác & underthesea, gensim, networkx, faiss-cpu \\
 \end{table}
 
 \subsection{Thí nghiệm 1: So sánh Embedding Methods}
+\label{sec:exp1}
 
-% TODO: Thêm bảng kết quả Precision@K, Recall@K, MRR
+\textbf{Thiết lập}: 9 truy vấn (mỗi truy vấn nhắm 1 aspect). Một review được coi là \textit{liên quan} nếu nhãn vàng của nó chứa aspect đó. Báo cáo Precision@5, Precision@10, MRR (trung bình trên các truy vấn). Cùng một phán quyết liên quan áp dụng cho cả 4 phương pháp $\Rightarrow$ công bằng.
 
-\subsection{Thí nghiệm 2: Đánh giá NER}
+\begin{table}[H]
+\centering
+\caption{Precision@k \& MRR theo phương pháp embedding \textit{(điền số từ \texttt{results\_part1.json} / bảng LaTeX in ra ở notebook Part 1)}}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Phương pháp} & \textbf{P@5} & \textbf{P@10} & \textbf{MRR} \\
+\midrule
+TF-IDF     & \dots & \dots & \dots \\
+Word2Vec   & \dots & \dots & \dots \\
+GloVe-SVD  & \dots & \dots & \dots \\
+PhoBERT    & \dots & \dots & \dots \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-% TODO: Thêm bảng kết quả F1-score NER
+\subsection{Thí nghiệm 2: Trích xuất thực thể (NER)}
 
-\subsection{Thí nghiệm 3: So sánh Retrieval Strategies}
+Thống kê số thực thể theo loại (PER/LOC/ORG + BRAND từ gazetteer) trên 800 review mẫu được in ở notebook Part 1 (\texttt{results\_part1.json}). Phân tích định tính: NER tổng quát nhận diện tốt thương hiệu (ORG) và địa điểm cửa hàng (LOC); gazetteer bổ sung node \texttt{brand} cho KG.
 
-% TODO: So sánh TF-IDF vs Embedding vs Graph RAG
+\subsection{Thí nghiệm 3: Ablation chiến lược Retrieval (không rò rỉ metric)}
 
-\subsection{Thí nghiệm 4: End-to-End Evaluation}
+\textbf{Thiết lập}: trên cùng tập Top-50 candidate, thay đổi trọng số 3 thành phần. \textbf{Quan trọng}: graph boost dựa trên aspect \textit{quan sát trong nội dung review} (tín hiệu khả dụng lúc suy luận), còn phán quyết liên quan dùng \textit{nhãn vàng} --- hai nguồn độc lập nên không có rò rỉ.
 
-% TODO: Đánh giá toàn pipeline
+\begin{table}[H]
+\centering
+\caption{Ablation: đóng góp của Attention và Graph \textit{(điền từ \texttt{results\_part2.json})}}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Cấu hình} & \textbf{P@5} & \textbf{P@10} & \textbf{MRR} \\
+\midrule
+Bi-encoder (PhoBERT) & \dots & \dots & \dots \\
+\quad + Attention rerank (MaxSim) & \dots & \dots & \dots \\
+\quad + Graph (Graph RAG) & \dots & \dots & \dots \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Thí nghiệm 4: Demo End-to-End}
+
+Ba câu hỏi mẫu (camera, pin, dịch vụ/bảo hành) chạy qua pipeline đầy đủ Retrieve $\to$ Graph context $\to$ OpenAI (gpt-4o-mini). Câu trả lời mẫu và thống kê KG kèm theo được in ở notebook Part 2.
 
 % ===================================================================
 \section{Kết quả và Thảo luận}
 % ===================================================================
 
-% TODO: Thêm phân tích kết quả
+\textbf{Embedding}: kỳ vọng PhoBERT đạt P@k/MRR cao nhất nhờ biểu diễn ngữ cảnh, TF-IDF là baseline; Word2Vec/GloVe-SVD ở giữa. Số liệu cụ thể điền từ Thí nghiệm 1.
+
+\textbf{Retrieval}: ablation cho thấy đóng góp riêng của (i) tái xếp hạng attention MaxSim và (ii) graph boost. Vì đánh giá không còn rò rỉ metric (boost từ nội dung, chấm điểm bằng nhãn vàng), chênh lệch quan sát được phản ánh cải thiện thực --- không còn là kết quả ``được sắp đặt'' như cách boost trực tiếp theo nhãn vàng.
+
+\textbf{Hạn chế quan sát được}: graph boost chỉ kích hoạt khi câu hỏi khớp được aspect tiếng Việt; với câu hỏi mơ hồ (không nêu rõ khía cạnh), đóng góp của graph giảm.
 
 % ===================================================================
 \section{Phân công công việc}
@@ -353,13 +397,23 @@ Báo cáo \& Trình bày & Báo cáo (phần Data, NER) & Báo cáo (phần Embe
 \section{Kết luận}
 % ===================================================================
 
-% TODO: Viết kết luận
-
 \subsection{Tóm tắt kết quả}
+Dự án xây dựng pipeline Graph RAG hoàn chỉnh cho review smartphone tiếng Việt: tiền xử lý + tách từ, so sánh 4 phương pháp embedding bằng độ đo truy xuất đúng (P@k, MRR), NER thương hiệu nối vào Knowledge Graph, tái xếp hạng bằng attention late-interaction, và sinh câu trả lời bằng OpenAI với ngữ cảnh từ đồ thị.
 
 \subsection{Hạn chế}
+\begin{itemize}
+  \item ``GloVe'' chỉ là xấp xỉ SVD trên đồng xuất hiện mức tài liệu, chưa phải GloVe gốc.
+  \item Tái xếp hạng MaxSim không huấn luyện; chưa fine-tune trên dữ liệu cặp truy vấn--tài liệu.
+  \item Ánh xạ câu hỏi $\to$ aspect dựa trên từ khóa thủ công, chưa bao phủ mọi cách diễn đạt.
+  \item NER dùng mô hình tổng quát + gazetteer, chưa có NER huấn luyện riêng cho domain điện thoại.
+\end{itemize}
 
 \subsection{Hướng phát triển}
+\begin{itemize}
+  \item Fine-tune cross-encoder PhoBERT cho re-ranking với nhãn liên quan tách biệt train/test.
+  \item Mở rộng KG với quan hệ sản phẩm--linh kiện và liên kết thực thể (entity linking).
+  \item Phân loại aspect câu hỏi bằng mô hình thay cho từ khóa; đánh giá thêm trên tập dev/test.
+\end{itemize}
 
 % ===================================================================
 % TÀI LIỆU THAM KHẢO

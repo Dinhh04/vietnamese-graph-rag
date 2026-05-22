@@ -34,12 +34,12 @@ models/*.pth
 models/*.safetensors
 models/*.onnx
 
-# Data (large files)
-data/raw/*.csv
-data/raw/*.json
-data/raw/*.parquet
-data/processed/*.pkl
-data/processed/*.npy
+# # Data (large files)
+# data/raw/*.csv
+# data/raw/*.json
+# data/raw/*.parquet
+# data/processed/*.pkl
+# data/processed/*.npy
 
 # LaTeX build artifacts
 report/*.aux
