@@ -6,7 +6,6 @@ tokenizers>=0.19.0
 # ML & Deep Learning
 torch>=2.0.0
 scikit-learn>=1.4.0
-gensim>=4.3.0
 
 # Knowledge Graph
 networkx>=3.2.0
